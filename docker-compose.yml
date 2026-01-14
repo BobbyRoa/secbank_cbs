@@ -1,0 +1,104 @@
+# Secbank CBS - Docker Compose Configuration
+# Orchestrates Frontend, Backend, and Database containers
+
+version: '3.8'
+
+services:
+  # ============================================
+  # MySQL Database
+  # ============================================
+  database:
+    image: mysql:8.0
+    container_name: secbank-database
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-secbank_root_password}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-secbank}
+      MYSQL_USER: ${MYSQL_USER:-secbank_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-secbank_password}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/database/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - secbank-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-secbank_root_password}"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # ============================================
+  # Backend API (Node.js + Express + tRPC)
+  # ============================================
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    image: secbank-backend:latest
+    container_name: secbank-backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: mysql://${MYSQL_USER:-secbank_user}:${MYSQL_PASSWORD:-secbank_password}@database:3306/${MYSQL_DATABASE:-secbank}
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      PORT: 3000
+      # Add your other environment variables here
+      VITE_APP_ID: ${VITE_APP_ID:-secbank}
+      OWNER_OPEN_ID: ${OWNER_OPEN_ID:-}
+      OWNER_NAME: ${OWNER_NAME:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      database:
+        condition: service_healthy
+    networks:
+      - secbank-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # ============================================
+  # Frontend (React + Vite served via Nginx)
+  # ============================================
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    image: secbank-frontend:latest
+    container_name: secbank-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - secbank-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  secbank-network:
+    driver: bridge
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  mysql_data:
+    driver: local

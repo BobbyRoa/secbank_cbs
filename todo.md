@@ -75,3 +75,11 @@
 - [x] Connect Instapay UI form to real API
 - [x] Add transaction status tracking (PENDING, SUCCESS, FAILED)
 - [x] Write vitest tests for Switch API endpoints
+
+
+## Docker & AWS Deployment
+- [x] Create Dockerfile for backend service
+- [x] Create Dockerfile for frontend service
+- [x] Create Docker Compose configuration
+- [x] Build and export Docker images as tar files (build script provided)
+- [x] Create AWS deployment documentation
