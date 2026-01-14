@@ -55,3 +55,12 @@
 - [x] Protected routes for admin pages
 - [x] Logout functionality
 - [x] Connect landing page to admin dashboard
+
+
+## Interbank Transfer Feature
+- [x] Add Intrabank/Interbank subtabs to Transfer dialog
+- [x] Create Instapay transfer form with bank dropdown
+- [x] Add 5 Philippine banks to dropdown (BDO, BPI, Metrobank, UnionBank, Landbank)
+- [x] Add recipient details fields (account number, account name)
+- [x] Add transaction amount with ₱50,000 limit validation
+- [x] Implement UI-only Instapay transfer (simulated)

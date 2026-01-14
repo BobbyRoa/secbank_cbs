@@ -35,19 +35,36 @@ import {
   ArrowDownRight, 
   ArrowUpRight, 
   ArrowLeftRight,
-  Plus
+  Plus,
+  Building2,
+  Zap
 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
+
+// Philippine banks that support Instapay
+const INSTAPAY_BANKS = [
+  { code: "BDO", name: "BDO Unibank" },
+  { code: "BPI", name: "Bank of the Philippine Islands" },
+  { code: "MBT", name: "Metrobank" },
+  { code: "UBP", name: "UnionBank of the Philippines" },
+  { code: "LBP", name: "Land Bank of the Philippines" },
+];
 
 export default function TransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isTransactionOpen, setIsTransactionOpen] = useState(false);
   const [transactionType, setTransactionType] = useState<"deposit" | "withdraw" | "transfer">("deposit");
+  const [transferType, setTransferType] = useState<"intrabank" | "interbank">("intrabank");
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [toAccountNumber, setToAccountNumber] = useState("");
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  
+  // Instapay fields
+  const [selectedBank, setSelectedBank] = useState<string>("");
+  const [recipientAccountNumber, setRecipientAccountNumber] = useState("");
+  const [recipientAccountName, setRecipientAccountName] = useState("");
 
   const utils = trpc.useUtils();
   const { data: transactions, isLoading } = trpc.transaction.list.useQuery();
@@ -98,6 +115,10 @@ export default function TransactionsPage() {
     setToAccountNumber("");
     setAmount("");
     setDescription("");
+    setTransferType("intrabank");
+    setSelectedBank("");
+    setRecipientAccountNumber("");
+    setRecipientAccountName("");
   };
 
   const filteredTransactions = transactions?.filter(
@@ -134,6 +155,8 @@ export default function TransactionsPage() {
         return <ArrowUpRight className="h-4 w-4 text-red-600" />;
       case "INTERNAL_TRANSFER":
         return <ArrowLeftRight className="h-4 w-4 text-blue-600" />;
+      case "INSTAPAY":
+        return <Zap className="h-4 w-4 text-purple-600" />;
       default:
         return null;
     }
@@ -161,22 +184,52 @@ export default function TransactionsPage() {
     }
 
     const accountId = parseInt(selectedAccountId);
+    const amountValue = parseFloat(amount);
 
     if (transactionType === "deposit") {
       deposit.mutate({ accountId, amount, description: description || undefined });
     } else if (transactionType === "withdraw") {
       withdraw.mutate({ accountId, amount, description: description || undefined });
     } else if (transactionType === "transfer") {
-      if (!toAccountNumber || toAccountNumber.length !== 10) {
-        toast.error("Please enter a valid 10-digit destination account number");
-        return;
+      if (transferType === "intrabank") {
+        // Intrabank transfer (existing functionality)
+        if (!toAccountNumber || toAccountNumber.length !== 10) {
+          toast.error("Please enter a valid 10-digit destination account number");
+          return;
+        }
+        transfer.mutate({
+          fromAccountId: accountId,
+          toAccountNumber,
+          amount,
+          description: description || undefined,
+        });
+      } else {
+        // Interbank transfer (Instapay) - UI only simulation
+        if (!selectedBank) {
+          toast.error("Please select a destination bank");
+          return;
+        }
+        if (!recipientAccountNumber) {
+          toast.error("Please enter the recipient account number");
+          return;
+        }
+        if (!recipientAccountName) {
+          toast.error("Please enter the recipient account name");
+          return;
+        }
+        if (amountValue > 50000) {
+          toast.error("Instapay transfers are limited to ₱50,000 per transaction");
+          return;
+        }
+        
+        // Simulate Instapay transfer (UI only)
+        const selectedBankInfo = INSTAPAY_BANKS.find(b => b.code === selectedBank);
+        toast.success(
+          `Instapay transfer of ${formatCurrency(amountValue)} to ${recipientAccountName} at ${selectedBankInfo?.name} has been processed successfully!`,
+          { duration: 5000 }
+        );
+        resetForm();
       }
-      transfer.mutate({
-        fromAccountId: accountId,
-        toAccountNumber,
-        amount,
-        description: description || undefined,
-      });
     }
   };
 
@@ -311,63 +364,219 @@ export default function TransactionsPage() {
               </TabsTrigger>
             </TabsList>
 
-            <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label>
-                  {transactionType === "transfer" ? "From Account" : "Account"}
-                </Label>
-                <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select an account" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {accounts?.filter(a => a.status === "active").map((account) => (
-                      <SelectItem key={account.id} value={account.id.toString()}>
-                        {account.accountNumber} - {account.customerName} ({formatCurrency(account.balance)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {selectedAccount && (
-                  <p className="text-xs text-muted-foreground">
-                    Available balance: {formatCurrency(selectedAccount.balance)}
-                  </p>
-                )}
-              </div>
-
-              {transactionType === "transfer" && (
+            {/* Deposit and Withdraw Content */}
+            {transactionType !== "transfer" && (
+              <div className="space-y-4 py-4">
                 <div className="space-y-2">
-                  <Label>To Account Number</Label>
+                  <Label>Account</Label>
+                  <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select an account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts?.filter(a => a.status === "active").map((account) => (
+                        <SelectItem key={account.id} value={account.id.toString()}>
+                          {account.accountNumber} - {account.customerName} ({formatCurrency(account.balance)})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedAccount && (
+                    <p className="text-xs text-muted-foreground">
+                      Available balance: {formatCurrency(selectedAccount.balance)}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label>Amount (PHP)</Label>
                   <Input
-                    placeholder="Enter 10-digit account number"
-                    value={toAccountNumber}
-                    onChange={(e) => setToAccountNumber(e.target.value)}
-                    maxLength={10}
+                    type="number"
+                    placeholder="0.00"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    min="0.01"
+                    step="0.01"
                   />
                 </div>
-              )}
 
-              <div className="space-y-2">
-                <Label>Amount (PHP)</Label>
-                <Input
-                  type="number"
-                  placeholder="0.00"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  min="0.01"
-                  step="0.01"
-                />
+                <div className="space-y-2">
+                  <Label>Description (Optional)</Label>
+                  <Input
+                    placeholder="Enter description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                  />
+                </div>
               </div>
+            )}
 
-              <div className="space-y-2">
-                <Label>Description (Optional)</Label>
-                <Input
-                  placeholder="Enter description"
-                  value={description}
-                  onChange={(e) => setDescription(e.target.value)}
-                />
+            {/* Transfer Content with Subtabs */}
+            {transactionType === "transfer" && (
+              <div className="py-4">
+                {/* Transfer Type Subtabs */}
+                <Tabs value={transferType} onValueChange={(v) => setTransferType(v as typeof transferType)}>
+                  <TabsList className="grid w-full grid-cols-2 mb-4">
+                    <TabsTrigger value="intrabank" className="flex items-center gap-1">
+                      <Building2 className="h-3 w-3" />
+                      Intrabank
+                    </TabsTrigger>
+                    <TabsTrigger value="interbank" className="flex items-center gap-1">
+                      <Zap className="h-3 w-3" />
+                      Interbank
+                    </TabsTrigger>
+                  </TabsList>
+
+                  {/* Intrabank Transfer */}
+                  <TabsContent value="intrabank" className="space-y-4 mt-0">
+                    <div className="space-y-2">
+                      <Label>From Account</Label>
+                      <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select source account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts?.filter(a => a.status === "active").map((account) => (
+                            <SelectItem key={account.id} value={account.id.toString()}>
+                              {account.accountNumber} - {account.customerName} ({formatCurrency(account.balance)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedAccount && (
+                        <p className="text-xs text-muted-foreground">
+                          Available balance: {formatCurrency(selectedAccount.balance)}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>To Account Number</Label>
+                      <Input
+                        placeholder="Enter 10-digit Secbank account number"
+                        value={toAccountNumber}
+                        onChange={(e) => setToAccountNumber(e.target.value)}
+                        maxLength={10}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Transfer to another Secbank account
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Amount (PHP)</Label>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        value={amount}
+                        onChange={(e) => setAmount(e.target.value)}
+                        min="0.01"
+                        step="0.01"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Description (Optional)</Label>
+                      <Input
+                        placeholder="Enter description"
+                        value={description}
+                        onChange={(e) => setDescription(e.target.value)}
+                      />
+                    </div>
+                  </TabsContent>
+
+                  {/* Interbank Transfer (Instapay) */}
+                  <TabsContent value="interbank" className="space-y-4 mt-0">
+                    <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 mb-4">
+                      <div className="flex items-center gap-2 text-purple-800">
+                        <Zap className="h-4 w-4" />
+                        <span className="font-medium text-sm">Instapay Transfer</span>
+                      </div>
+                      <p className="text-xs text-purple-600 mt-1">
+                        Instant transfer to other banks • Free of charge • Max ₱50,000
+                      </p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>From Account</Label>
+                      <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select source account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {accounts?.filter(a => a.status === "active").map((account) => (
+                            <SelectItem key={account.id} value={account.id.toString()}>
+                              {account.accountNumber} - {account.customerName} ({formatCurrency(account.balance)})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {selectedAccount && (
+                        <p className="text-xs text-muted-foreground">
+                          Available balance: {formatCurrency(selectedAccount.balance)}
+                        </p>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Destination Bank</Label>
+                      <Select value={selectedBank} onValueChange={setSelectedBank}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select bank" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {INSTAPAY_BANKS.map((bank) => (
+                            <SelectItem key={bank.code} value={bank.code}>
+                              {bank.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Recipient Account Number</Label>
+                      <Input
+                        placeholder="Enter recipient's account number"
+                        value={recipientAccountNumber}
+                        onChange={(e) => setRecipientAccountNumber(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Recipient Account Name</Label>
+                      <Input
+                        placeholder="Enter recipient's full name"
+                        value={recipientAccountName}
+                        onChange={(e) => setRecipientAccountName(e.target.value)}
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Amount (PHP)</Label>
+                      <Input
+                        type="number"
+                        placeholder="0.00"
+                        value={amount}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (parseFloat(val) > 50000) {
+                            toast.error("Instapay limit is ₱50,000 per transaction");
+                          }
+                          setAmount(val);
+                        }}
+                        min="0.01"
+                        max="50000"
+                        step="0.01"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Maximum: ₱50,000 per transaction
+                      </p>
+                    </div>
+                  </TabsContent>
+                </Tabs>
               </div>
-            </div>
+            )}
           </Tabs>
 
           <DialogFooter>
@@ -382,13 +591,16 @@ export default function TransactionsPage() {
                   ? "bg-green-600 hover:bg-green-700"
                   : transactionType === "withdraw"
                   ? "bg-red-600 hover:bg-red-700"
+                  : transferType === "interbank"
+                  ? "bg-purple-600 hover:bg-purple-700"
                   : "bg-blue-600 hover:bg-blue-700"
               }
             >
               {isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               {transactionType === "deposit" && "Process Deposit"}
               {transactionType === "withdraw" && "Process Withdrawal"}
-              {transactionType === "transfer" && "Process Transfer"}
+              {transactionType === "transfer" && transferType === "intrabank" && "Process Transfer"}
+              {transactionType === "transfer" && transferType === "interbank" && "Send via Instapay"}
             </Button>
           </DialogFooter>
         </DialogContent>
