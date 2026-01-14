@@ -109,6 +109,23 @@ export default function TransactionsPage() {
     },
   });
 
+  // Instapay transfer mutation (real API)
+  const instapay = trpc.switch.instapaySend.useMutation({
+    onSuccess: (result) => {
+      toast.success(
+        `Instapay transfer initiated. Ref: ${result.referenceNumber}. Status: ${result.status}`,
+        { duration: 5000 }
+      );
+      resetForm();
+      utils.transaction.list.invalidate();
+      utils.account.list.invalidate();
+      utils.dashboard.stats.invalidate();
+    },
+    onError: (error) => {
+      toast.error(error.message);
+    },
+  });
+
   const resetForm = () => {
     setIsTransactionOpen(false);
     setSelectedAccountId("");
@@ -204,7 +221,7 @@ export default function TransactionsPage() {
           description: description || undefined,
         });
       } else {
-        // Interbank transfer (Instapay) - UI only simulation
+        // Interbank transfer (Instapay) - Real API call
         if (!selectedBank) {
           toast.error("Please select a destination bank");
           return;
@@ -222,18 +239,21 @@ export default function TransactionsPage() {
           return;
         }
         
-        // Simulate Instapay transfer (UI only)
+        // Call real Instapay API
         const selectedBankInfo = INSTAPAY_BANKS.find(b => b.code === selectedBank);
-        toast.success(
-          `Instapay transfer of ${formatCurrency(amountValue)} to ${recipientAccountName} at ${selectedBankInfo?.name} has been processed successfully!`,
-          { duration: 5000 }
-        );
-        resetForm();
+        instapay.mutate({
+          sourceAccountId: accountId,
+          bankCode: selectedBank,
+          bankName: selectedBankInfo?.name || selectedBank,
+          accountNumber: recipientAccountNumber,
+          accountName: recipientAccountName,
+          amount,
+        });
       }
     }
   };
 
-  const isPending = deposit.isPending || withdraw.isPending || transfer.isPending;
+  const isPending = deposit.isPending || withdraw.isPending || transfer.isPending || instapay.isPending;
 
   const selectedAccount = accounts?.find((a) => a.id.toString() === selectedAccountId);
 

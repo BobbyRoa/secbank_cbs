@@ -64,3 +64,14 @@
 - [x] Add recipient details fields (account number, account name)
 - [x] Add transaction amount with ₱50,000 limit validation
 - [x] Implement UI-only Instapay transfer (simulated)
+
+
+## Switch API Integration (Instapay)
+- [x] Add instapay_transactions table to database schema
+- [x] Create database helper functions for Instapay transactions
+- [x] Build POST /api/switch/instapay/send endpoint
+- [x] Build POST /api/switch/instapay/callback endpoint
+- [x] Build GET /api/switch/instapay/status/:referenceNumber endpoint
+- [x] Connect Instapay UI form to real API
+- [x] Add transaction status tracking (PENDING, SUCCESS, FAILED)
+- [x] Write vitest tests for Switch API endpoints

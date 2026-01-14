@@ -27,6 +27,11 @@ import {
   getTransactionsByAccountId,
   getAllTransactions,
   getDashboardStats,
+  // Instapay functions
+  createInstapayTransaction,
+  getInstapayTransactionByReference,
+  updateInstapayTransactionStatus,
+  getAllInstapayTransactions,
 } from "./db";
 
 export const appRouter = router({
@@ -307,20 +312,6 @@ export const appRouter = router({
 
         return senderTx;
       }),
-    instapay: protectedProcedure
-      .input(z.object({
-        fromAccountId: z.number(),
-        toBankCode: z.string(),
-        toAccountNumber: z.string(),
-        amount: z.string().refine(val => parseFloat(val) > 0, "Amount must be positive"),
-        description: z.string().optional(),
-      }))
-      .mutation(async () => {
-        throw new TRPCError({ 
-          code: "NOT_IMPLEMENTED", 
-          message: "Instapay integration coming soon" 
-        });
-      }),
   }),
 
   // Dashboard statistics
@@ -328,6 +319,165 @@ export const appRouter = router({
     stats: protectedProcedure.query(async () => {
       return await getDashboardStats();
     }),
+  }),
+
+  // ============ Switch API Integration (Instapay) ============
+  // These endpoints are for communication between CBS and Switch
+  
+  switch: router({
+    // List all Instapay transactions (for admin monitoring)
+    instapayList: protectedProcedure.query(async () => {
+      return await getAllInstapayTransactions();
+    }),
+
+    /**
+     * POST /api/switch/instapay/send
+     * CBS → Switch: Initiate an Instapay transfer
+     * Called by the CBS UI when user initiates an interbank transfer
+     */
+    instapaySend: protectedProcedure
+      .input(z.object({
+        sourceAccountId: z.number(),
+        bankCode: z.string().min(1, "Bank code is required"),
+        bankName: z.string().min(1, "Bank name is required"),
+        accountNumber: z.string().min(1, "Account number is required"),
+        accountName: z.string().min(1, "Account name is required"),
+        amount: z.string().refine(
+          val => parseFloat(val) > 0 && parseFloat(val) <= 50000, 
+          "Amount must be between 0.01 and 50,000"
+        ),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          // Get source account details
+          const sourceAccount = await getAccountById(input.sourceAccountId);
+          if (!sourceAccount) {
+            throw new TRPCError({ code: "NOT_FOUND", message: "Source account not found" });
+          }
+
+          // Create Instapay transaction (deducts from account, creates records)
+          const instapayTx = await createInstapayTransaction({
+            sourceAccountId: input.sourceAccountId,
+            sourceAccountNumber: sourceAccount.accountNumber,
+            bankName: input.bankName,
+            bankCode: input.bankCode,
+            accountNumber: input.accountNumber,
+            accountName: input.accountName,
+            amount: input.amount,
+          });
+
+          if (!instapayTx) {
+            throw new TRPCError({ 
+              code: "INTERNAL_SERVER_ERROR", 
+              message: "Failed to create Instapay transaction" 
+            });
+          }
+
+          // Return the transaction details for the switch to process
+          // The switch will use this data to format the ISO 20022 message
+          return {
+            success: true,
+            referenceNumber: instapayTx.referenceNumber,
+            status: instapayTx.status,
+            message: "Transaction created and pending switch processing",
+            // Data for switch to send to Instapay network
+            switchPayload: {
+              referenceNumber: instapayTx.referenceNumber,
+              sourceAccountNumber: instapayTx.sourceAccountNumber,
+              bankCode: instapayTx.bankCode,
+              bankName: instapayTx.bankName,
+              accountNumber: instapayTx.accountNumber,
+              accountName: instapayTx.accountName,
+              amount: instapayTx.amount,
+              sentAt: instapayTx.sentAt,
+            },
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: error instanceof Error ? error.message : "Failed to process Instapay transfer",
+          });
+        }
+      }),
+
+    /**
+     * POST /api/switch/instapay/callback
+     * Switch → CBS: Receive status update from switch
+     * Called by the switch when transaction status changes
+     */
+    instapayCallback: publicProcedure
+      .input(z.object({
+        referenceNumber: z.string().min(1, "Reference number is required"),
+        status: z.enum(["PENDING", "SUCCESS", "FAILED"]),
+        switchReferenceNumber: z.string().optional(),
+        message: z.string().optional(),
+      }))
+      .mutation(async ({ input }) => {
+        try {
+          const updatedTx = await updateInstapayTransactionStatus(
+            input.referenceNumber,
+            input.status,
+            input.switchReferenceNumber,
+            input.message
+          );
+
+          if (!updatedTx) {
+            throw new TRPCError({
+              code: "NOT_FOUND",
+              message: "Transaction not found",
+            });
+          }
+
+          return {
+            acknowledged: true,
+            referenceNumber: updatedTx.referenceNumber,
+            status: updatedTx.status,
+            message: `Transaction status updated to ${updatedTx.status}`,
+          };
+        } catch (error) {
+          if (error instanceof TRPCError) throw error;
+          throw new TRPCError({
+            code: "INTERNAL_SERVER_ERROR",
+            message: error instanceof Error ? error.message : "Failed to process callback",
+          });
+        }
+      }),
+
+    /**
+     * GET /api/switch/instapay/status/:referenceNumber
+     * CBS ↔ Switch: Query transaction status
+     * Can be called by either CBS or Switch to check transaction status
+     */
+    instapayStatus: publicProcedure
+      .input(z.object({
+        referenceNumber: z.string().min(1, "Reference number is required"),
+      }))
+      .query(async ({ input }) => {
+        const tx = await getInstapayTransactionByReference(input.referenceNumber);
+
+        if (!tx) {
+          throw new TRPCError({
+            code: "NOT_FOUND",
+            message: "Transaction not found",
+          });
+        }
+
+        return {
+          referenceNumber: tx.referenceNumber,
+          switchReferenceNumber: tx.switchReferenceNumber,
+          status: tx.status,
+          statusMessage: tx.statusMessage,
+          sourceAccountNumber: tx.sourceAccountNumber,
+          bankCode: tx.bankCode,
+          bankName: tx.bankName,
+          accountNumber: tx.accountNumber,
+          accountName: tx.accountName,
+          amount: tx.amount,
+          sentAt: tx.sentAt,
+          updatedAt: tx.updatedAt,
+        };
+      }),
   }),
 });
 

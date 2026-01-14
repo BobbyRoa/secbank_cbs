@@ -15,6 +15,13 @@
       "when": 1768397189804,
       "tag": "0001_fluffy_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "5",
+      "when": 1768401688109,
+      "tag": "0002_legal_professor_monster",
+      "breakpoints": true
     }
   ]
 }

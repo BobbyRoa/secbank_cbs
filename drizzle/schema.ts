@@ -95,3 +95,41 @@ export const transactionSequence = mysqlTable("transactionSequence", {
 });
 
 export type TransactionSequence = typeof transactionSequence.$inferSelect;
+
+
+/**
+ * Instapay Transactions table - for interbank transfers via switch
+ * Tracks outbound Instapay transactions with status updates from switch
+ */
+export const instapayTransactions = mysqlTable("instapayTransactions", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Internal reference number from CBS */
+  referenceNumber: varchar("referenceNumber", { length: 20 }).notNull().unique(),
+  /** Reference number returned by switch */
+  switchReferenceNumber: varchar("switchReferenceNumber", { length: 50 }),
+  /** Source account ID in CBS */
+  sourceAccountId: int("sourceAccountId").notNull(),
+  /** Source account number */
+  sourceAccountNumber: varchar("sourceAccountNumber", { length: 10 }).notNull(),
+  /** Destination bank name */
+  bankName: varchar("bankName", { length: 100 }).notNull(),
+  /** Destination bank code */
+  bankCode: varchar("bankCode", { length: 20 }).notNull(),
+  /** Recipient account number at destination bank */
+  accountNumber: varchar("accountNumber", { length: 50 }).notNull(),
+  /** Recipient account name */
+  accountName: varchar("accountName", { length: 255 }).notNull(),
+  /** Transfer amount */
+  amount: decimal("amount", { precision: 18, scale: 2 }).notNull(),
+  /** Transaction status: PENDING, SUCCESS, FAILED */
+  status: mysqlEnum("status", ["PENDING", "SUCCESS", "FAILED"]).default("PENDING").notNull(),
+  /** Status message from switch */
+  statusMessage: text("statusMessage"),
+  /** Timestamp when sent to switch */
+  sentAt: timestamp("sentAt").defaultNow().notNull(),
+  /** Timestamp when status was last updated */
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type InstapayTransaction = typeof instapayTransactions.$inferSelect;
+export type InsertInstapayTransaction = typeof instapayTransactions.$inferInsert;

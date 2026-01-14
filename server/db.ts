@@ -529,3 +529,191 @@ export async function getDashboardStats() {
     },
   };
 }
+
+
+// ============ Instapay Transaction Functions (Switch Integration) ============
+import { instapayTransactions, InsertInstapayTransaction, InstapayTransaction } from "../drizzle/schema";
+
+export interface CreateInstapayTransactionInput {
+  sourceAccountId: number;
+  sourceAccountNumber: string;
+  bankName: string;
+  bankCode: string;
+  accountNumber: string;
+  accountName: string;
+  amount: string;
+}
+
+/**
+ * Create a new Instapay transaction record with PENDING status
+ * Deducts amount from source account
+ */
+export async function createInstapayTransaction(
+  input: CreateInstapayTransactionInput
+): Promise<InstapayTransaction | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  // Generate reference number
+  const referenceNumber = await generateTransactionReference();
+
+  // Get source account and verify balance
+  const sourceAccount = await getAccountById(input.sourceAccountId);
+  if (!sourceAccount) {
+    throw new Error("Source account not found");
+  }
+  if (sourceAccount.status !== "active") {
+    throw new Error("Source account is not active");
+  }
+
+  const currentBalance = parseFloat(sourceAccount.balance);
+  const transferAmount = parseFloat(input.amount);
+
+  if (transferAmount <= 0) {
+    throw new Error("Transfer amount must be greater than 0");
+  }
+  if (transferAmount > 50000) {
+    throw new Error("Instapay transfers are limited to ₱50,000 per transaction");
+  }
+  if (currentBalance < transferAmount) {
+    throw new Error("Insufficient balance");
+  }
+
+  // Deduct from source account
+  const newBalance = (currentBalance - transferAmount).toFixed(2);
+  await updateAccountBalance(input.sourceAccountId, newBalance);
+
+  // Create transaction record in main transactions table
+  await db.insert(transactions).values({
+    referenceNumber,
+    accountId: input.sourceAccountId,
+    type: "INSTAPAY",
+    amount: (-transferAmount).toFixed(2),
+    balanceAfter: newBalance,
+    relatedAccountNumber: input.accountNumber,
+    description: `Instapay to ${input.accountName} at ${input.bankName}`,
+  });
+
+  // Create Instapay transaction record
+  const result = await db.insert(instapayTransactions).values({
+    referenceNumber,
+    sourceAccountId: input.sourceAccountId,
+    sourceAccountNumber: input.sourceAccountNumber,
+    bankName: input.bankName,
+    bankCode: input.bankCode,
+    accountNumber: input.accountNumber,
+    accountName: input.accountName,
+    amount: input.amount,
+    status: "PENDING",
+  });
+
+  const insertId = result[0].insertId;
+  const [instapayTx] = await db
+    .select()
+    .from(instapayTransactions)
+    .where(eq(instapayTransactions.id, insertId));
+
+  return instapayTx || null;
+}
+
+/**
+ * Get Instapay transaction by reference number
+ */
+export async function getInstapayTransactionByReference(
+  referenceNumber: string
+): Promise<InstapayTransaction | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const [tx] = await db
+    .select()
+    .from(instapayTransactions)
+    .where(eq(instapayTransactions.referenceNumber, referenceNumber));
+
+  return tx || null;
+}
+
+/**
+ * Update Instapay transaction status (callback from switch)
+ */
+export async function updateInstapayTransactionStatus(
+  referenceNumber: string,
+  status: "PENDING" | "SUCCESS" | "FAILED",
+  switchReferenceNumber?: string,
+  statusMessage?: string
+): Promise<InstapayTransaction | null> {
+  const db = await getDb();
+  if (!db) return null;
+
+  const existingTx = await getInstapayTransactionByReference(referenceNumber);
+  if (!existingTx) {
+    throw new Error("Instapay transaction not found");
+  }
+
+  // If transaction failed, reverse the deduction
+  if (status === "FAILED" && existingTx.status === "PENDING") {
+    const sourceAccount = await getAccountById(existingTx.sourceAccountId);
+    if (sourceAccount) {
+      const currentBalance = parseFloat(sourceAccount.balance);
+      const refundAmount = parseFloat(existingTx.amount);
+      const newBalance = (currentBalance + refundAmount).toFixed(2);
+      await updateAccountBalance(existingTx.sourceAccountId, newBalance);
+
+      // Create reversal transaction record
+      const reversalRef = await generateTransactionReference();
+      await db.insert(transactions).values({
+        referenceNumber: reversalRef,
+        accountId: existingTx.sourceAccountId,
+        type: "DEPOSIT",
+        amount: refundAmount.toFixed(2),
+        balanceAfter: newBalance,
+        description: `Instapay reversal - ${referenceNumber} failed: ${statusMessage || "Transaction failed"}`,
+      });
+    }
+  }
+
+  // Update Instapay transaction status
+  await db
+    .update(instapayTransactions)
+    .set({
+      status,
+      switchReferenceNumber: switchReferenceNumber || existingTx.switchReferenceNumber,
+      statusMessage: statusMessage || existingTx.statusMessage,
+    })
+    .where(eq(instapayTransactions.referenceNumber, referenceNumber));
+
+  const [updatedTx] = await db
+    .select()
+    .from(instapayTransactions)
+    .where(eq(instapayTransactions.referenceNumber, referenceNumber));
+
+  return updatedTx || null;
+}
+
+/**
+ * Get all Instapay transactions (for admin view)
+ */
+export async function getAllInstapayTransactions(): Promise<InstapayTransaction[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select()
+    .from(instapayTransactions)
+    .orderBy(desc(instapayTransactions.sentAt))
+    .limit(100);
+}
+
+/**
+ * Get pending Instapay transactions (for monitoring/retry)
+ */
+export async function getPendingInstapayTransactions(): Promise<InstapayTransaction[]> {
+  const db = await getDb();
+  if (!db) return [];
+
+  return await db
+    .select()
+    .from(instapayTransactions)
+    .where(eq(instapayTransactions.status, "PENDING"))
+    .orderBy(instapayTransactions.sentAt);
+}
