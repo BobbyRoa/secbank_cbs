@@ -2,8 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Lock, ArrowRight, Eye, EyeOff } from "lucide-react";
-import { useState } from "react";
+import { Lock, ArrowRight, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 
 /**
  * Secbank Admin Login Page - Swiss Banking Minimalism Design
@@ -19,10 +21,20 @@ import { useState } from "react";
 export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [, setLocation] = useLocation();
+  const { login, isAuthenticated } = useAuth();
   const [formData, setFormData] = useState({
     username: "",
     password: "",
   });
+
+  // Redirect to dashboard if already authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      setLocation('/admin/dashboard');
+    }
+  }, [isAuthenticated, setLocation]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -32,16 +44,21 @@ export default function AdminLogin() {
     }));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
+    setLocalError(null);
     
-    // Simulate login process
-    setTimeout(() => {
-      console.log("Login attempt:", formData);
+    try {
+      await login(formData.username, formData.password);
+      // Redirect will happen automatically via useEffect
+      setLocation('/admin/dashboard');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Login failed. Please try again.';
+      setLocalError(message);
+    } finally {
       setIsLoading(false);
-      // In a real app, this would authenticate the user
-    }, 1500);
+    }
   };
 
   return (
@@ -148,6 +165,16 @@ export default function AdminLogin() {
 
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
+                {/* Error Message */}
+                {localError && (
+                  <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg flex items-start gap-3">
+                    <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+                    <div>
+                      <p className="text-sm font-semibold text-destructive">Login Error</p>
+                      <p className="text-sm text-destructive/80">{localError}</p>
+                    </div>
+                  </div>
+                )}
                 {/* Username Field */}
                 <div className="space-y-2">
                   <Label htmlFor="username" className="text-sm font-semibold text-primary">
@@ -223,8 +250,8 @@ export default function AdminLogin() {
                 {/* Submit Button */}
                 <Button
                   type="submit"
-                  disabled={isLoading}
-                  className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-semibold transition-all duration-200 shadow-lg hover:shadow-xl"
+                  disabled={isLoading || !formData.username || !formData.password}
+                  className="w-full h-11 bg-primary hover:bg-primary/90 text-white font-semibold transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <>

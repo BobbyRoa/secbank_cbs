@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { ArrowRight, Shield, BarChart3, Users, Zap, Lock, TrendingUp } from "lucide-react";
+import { ArrowRight, Shield, BarChart3, Users, Zap, Lock, TrendingUp, LogIn } from "lucide-react";
 import { useState } from "react";
+import { useLocation } from "wouter";
 
 /**
  * Secbank Landing Page - Swiss Banking Minimalism Design
@@ -17,6 +18,7 @@ import { useState } from "react";
 
 export default function Home() {
   const [hoveredFeature, setHoveredFeature] = useState<number | null>(null);
+  const [, setLocation] = useLocation();
 
   return (
     <div className="min-h-screen bg-white text-foreground">
@@ -34,10 +36,20 @@ export default function Home() {
             <a href="#about" className="text-sm font-medium text-foreground hover:text-accent transition-colors duration-200">About</a>
             <a href="#contact" className="text-sm font-medium text-foreground hover:text-accent transition-colors duration-200">Contact</a>
           </div>
-          <Button className="bg-primary hover:bg-primary/90 text-white font-semibold transition-all duration-200">
-            Get Started
-            <ArrowRight className="ml-2 h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="outline" 
+              className="border-primary text-primary hover:bg-primary/5 font-semibold transition-all duration-200"
+              onClick={() => setLocation('/admin/login')}
+            >
+              <LogIn className="mr-2 h-4 w-4" />
+              Admin Login
+            </Button>
+            <Button className="bg-primary hover:bg-primary/90 text-white font-semibold transition-all duration-200">
+              Get Started
+              <ArrowRight className="ml-2 h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </nav>
 
@@ -59,8 +71,12 @@ export default function Home() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <Button size="lg" className="bg-primary hover:bg-primary/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200">
-                Explore System
+              <Button 
+                size="lg" 
+                className="bg-primary hover:bg-primary/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+                onClick={() => setLocation('/admin/login')}
+              >
+                Access Admin Dashboard
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
               <Button size="lg" variant="outline" className="border-2 border-primary text-primary hover:bg-primary/5 font-semibold transition-all duration-200">
