@@ -13,7 +13,7 @@ import { LogOut, Users, CreditCard, TrendingUp, Settings, Home } from "lucide-re
  */
 
 export default function AdminDashboard() {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout, isDemoMode } = useAuth();
   const [, setLocation] = useLocation();
 
   // Redirect to login if not authenticated
@@ -198,27 +198,49 @@ export default function AdminDashboard() {
             </div>
           </div>
 
+          {/* Demo Mode Banner */}
+          {isDemoMode && (
+            <Card className="border-amber-300 bg-amber-50">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-amber-800 flex items-center gap-2">
+                  <span className="text-lg">🎮</span>
+                  Demo Mode Active
+                </CardTitle>
+                <CardDescription className="text-amber-700">
+                  You are logged in using demo credentials. To connect to the real Secbank backend, deploy the core banking system and the authentication will automatically switch to live mode.
+                </CardDescription>
+              </CardHeader>
+            </Card>
+          )}
+
           {/* Information Box */}
-          <Card className="border-accent/20 bg-accent/5">
+          <Card className={isDemoMode ? "border-amber-200 bg-amber-50/50" : "border-accent/20 bg-accent/5"}>
             <CardHeader>
-              <CardTitle className="text-primary">Connected to Secbank Backend</CardTitle>
+              <CardTitle className="text-primary">
+                {isDemoMode ? 'Demo Mode - Secbank Preview' : 'Connected to Secbank Backend'}
+              </CardTitle>
               <CardDescription>
-                This dashboard is connected to the full Secbank core banking system. To access the complete admin interface with all features, you can access the main Secbank application.
+                {isDemoMode 
+                  ? 'This is a preview of the Secbank admin dashboard. Deploy the backend to enable full functionality with real data.'
+                  : 'This dashboard is connected to the full Secbank core banking system. To access the complete admin interface with all features, you can access the main Secbank application.'
+                }
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 <div className="p-3 bg-white rounded-lg border border-accent/20">
                   <p className="text-sm font-semibold text-primary mb-1">Backend Status</p>
-                  <p className="text-sm text-muted-foreground">✓ Connected and ready</p>
+                  <p className="text-sm text-muted-foreground">
+                    {isDemoMode ? '⚠️ Demo mode - Backend not connected' : '✓ Connected and ready'}
+                  </p>
                 </div>
                 <div className="p-3 bg-white rounded-lg border border-accent/20">
                   <p className="text-sm font-semibold text-primary mb-1">Available Features</p>
                   <ul className="text-sm text-muted-foreground space-y-1">
-                    <li>✓ Customer Management</li>
-                    <li>✓ Account Operations</li>
-                    <li>✓ Transaction Processing</li>
-                    <li>✓ Real-time Analytics</li>
+                    <li>{isDemoMode ? '○' : '✓'} Customer Management</li>
+                    <li>{isDemoMode ? '○' : '✓'} Account Operations</li>
+                    <li>{isDemoMode ? '○' : '✓'} Transaction Processing</li>
+                    <li>{isDemoMode ? '○' : '✓'} Real-time Analytics</li>
                   </ul>
                 </div>
               </div>
