@@ -1,0 +1,269 @@
+# Secbank CBS - CI/CD Pipeline
+# Automatically builds, tests, and deploys Docker images on push to main
+
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_BACKEND_REPOSITORY: secbank-backend
+  ECR_FRONTEND_REPOSITORY: secbank-frontend
+
+jobs:
+  # ============================================
+  # Job 1: Run Tests
+  # ============================================
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10.4.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run TypeScript check
+        run: pnpm run check
+
+      - name: Run tests
+        run: pnpm test
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+
+  # ============================================
+  # Job 2: Build Docker Images
+  # ============================================
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    outputs:
+      backend-image: ${{ steps.build-backend.outputs.image }}
+      frontend-image: ${{ steps.build-frontend.outputs.image }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        id: build-backend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/backend/Dockerfile
+          push: false
+          load: true
+          tags: secbank-backend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build frontend image
+        id: build-frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/frontend/Dockerfile
+          push: false
+          load: true
+          tags: secbank-frontend:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Save backend image
+        run: docker save secbank-backend:${{ github.sha }} | gzip > backend-image.tar.gz
+
+      - name: Save frontend image
+        run: docker save secbank-frontend:${{ github.sha }} | gzip > frontend-image.tar.gz
+
+      - name: Upload backend image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-image
+          path: backend-image.tar.gz
+          retention-days: 1
+
+      - name: Upload frontend image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-image
+          path: frontend-image.tar.gz
+          retention-days: 1
+
+  # ============================================
+  # Job 3: Push to AWS ECR
+  # ============================================
+  push-to-ecr:
+    name: Push to AWS ECR
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - name: Download backend image
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-image
+
+      - name: Download frontend image
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-image
+
+      - name: Load Docker images
+        run: |
+          gunzip -c backend-image.tar.gz | docker load
+          gunzip -c frontend-image.tar.gz | docker load
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Tag and push backend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker tag secbank-backend:${{ github.sha }} $ECR_REGISTRY/${{ env.ECR_BACKEND_REPOSITORY }}:${{ github.sha }}
+          docker tag secbank-backend:${{ github.sha }} $ECR_REGISTRY/${{ env.ECR_BACKEND_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_BACKEND_REPOSITORY }}:${{ github.sha }}
+          docker push $ECR_REGISTRY/${{ env.ECR_BACKEND_REPOSITORY }}:latest
+
+      - name: Tag and push frontend image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          docker tag secbank-frontend:${{ github.sha }} $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPOSITORY }}:${{ github.sha }}
+          docker tag secbank-frontend:${{ github.sha }} $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPOSITORY }}:latest
+          docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPOSITORY }}:${{ github.sha }}
+          docker push $ECR_REGISTRY/${{ env.ECR_FRONTEND_REPOSITORY }}:latest
+
+  # ============================================
+  # Job 4: Deploy to EC2 (Optional)
+  # ============================================
+  deploy-ec2:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: push-to-ecr
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Deploy to EC2 via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            # Login to ECR
+            aws ecr get-login-password --region ${{ env.AWS_REGION }} | docker login --username AWS --password-stdin ${{ steps.login-ecr.outputs.registry }}
+            
+            # Navigate to project directory
+            cd /home/ec2-user/secbank_cbs
+            
+            # Pull latest images
+            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPOSITORY }}:latest
+            docker pull ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPOSITORY }}:latest
+            
+            # Update docker-compose to use ECR images
+            export ECR_REGISTRY=${{ steps.login-ecr.outputs.registry }}
+            
+            # Restart services with new images
+            docker-compose down
+            docker-compose up -d
+            
+            # Clean up old images
+            docker image prune -f
+
+  # ============================================
+  # Job 5: Deploy to ECS (Alternative)
+  # ============================================
+  deploy-ecs:
+    name: Deploy to ECS
+    runs-on: ubuntu-latest
+    needs: push-to-ecr
+    if: false  # Set to true to enable ECS deployment
+    environment: production
+    
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Update ECS backend service
+        run: |
+          aws ecs update-service \
+            --cluster secbank-cluster \
+            --service secbank-backend \
+            --force-new-deployment
+
+      - name: Update ECS frontend service
+        run: |
+          aws ecs update-service \
+            --cluster secbank-cluster \
+            --service secbank-frontend \
+            --force-new-deployment
+
+      - name: Wait for backend deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster secbank-cluster \
+            --services secbank-backend
+
+      - name: Wait for frontend deployment
+        run: |
+          aws ecs wait services-stable \
+            --cluster secbank-cluster \
+            --services secbank-frontend

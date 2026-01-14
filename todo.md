@@ -83,3 +83,10 @@
 - [x] Create Docker Compose configuration
 - [x] Build and export Docker images as tar files (build script provided)
 - [x] Create AWS deployment documentation
+
+
+## CI/CD Pipeline (GitHub Actions)
+- [x] Create GitHub Actions workflow for building Docker images
+- [x] Create workflow for pushing images to AWS ECR
+- [x] Create deployment workflow for EC2/ECS
+- [x] Document CI/CD setup and required GitHub secrets
