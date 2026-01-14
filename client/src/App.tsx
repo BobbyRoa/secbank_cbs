@@ -4,43 +4,43 @@ import NotFound from "@/pages/NotFound";
 import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { AuthProvider } from "./contexts/AuthContext";
 import Home from "./pages/Home";
-import AdminLogin from "./pages/AdminLogin";
-import AdminDashboard from "./pages/AdminDashboard";
 
+// Admin pages
+import AdminDashboard from "./pages/admin/Dashboard";
+import AdminCustomers from "./pages/admin/Customers";
+import AdminAccounts from "./pages/admin/Accounts";
+import AdminTransactions from "./pages/admin/Transactions";
+import AdminBranches from "./pages/admin/Branches";
 
 function Router() {
   return (
     <Switch>
+      {/* Public routes */}
       <Route path={"/"} component={Home} />
-      <Route path={"/admin/login"} component={AdminLogin} />
-      <Route path={"/admin/dashboard"} component={AdminDashboard} />
+      
+      {/* Admin routes - protected by AdminLayout */}
+      <Route path={"/admin"} component={AdminDashboard} />
+      <Route path={"/admin/customers"} component={AdminCustomers} />
+      <Route path={"/admin/accounts"} component={AdminAccounts} />
+      <Route path={"/admin/transactions"} component={AdminTransactions} />
+      <Route path={"/admin/branches"} component={AdminBranches} />
+      
+      {/* Fallback routes */}
       <Route path={"/404"} component={NotFound} />
-      {/* Final fallback route */}
       <Route component={NotFound} />
     </Switch>
   );
 }
 
-// NOTE: About Theme
-// - First choose a default theme according to your design style (dark or light bg), than change color palette in index.css
-//   to keep consistent foreground/background color across components
-// - If you want to make theme switchable, pass `switchable` ThemeProvider and use `useTheme` hook
-
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider
-        defaultTheme="light"
-        // switchable
-      >
-        <AuthProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Router />
-          </TooltipProvider>
-        </AuthProvider>
+      <ThemeProvider defaultTheme="light">
+        <TooltipProvider>
+          <Toaster />
+          <Router />
+        </TooltipProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

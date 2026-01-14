@@ -1,0 +1,20 @@
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1768397108445,
+      "tag": "0000_typical_shard",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "5",
+      "when": 1768397189804,
+      "tag": "0001_fluffy_micromax",
+      "breakpoints": true
+    }
+  ]
+}

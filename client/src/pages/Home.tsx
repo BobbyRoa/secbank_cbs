@@ -1,3 +1,4 @@
+import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ArrowRight, Shield, BarChart3, Users, Zap, Lock, TrendingUp, LogIn } from "lucide-react";
@@ -17,6 +18,10 @@ import { useLocation } from "wouter";
  */
 
 export default function Home() {
+  // The userAuth hooks provides authentication state
+  // To implement login/logout functionality, simply call logout() or redirect to getLoginUrl()
+  let { user, loading, error, isAuthenticated, logout } = useAuth();
+
   const [hoveredFeature, setHoveredFeature] = useState<number | null>(null);
   const [, setLocation] = useLocation();
 
@@ -40,7 +45,7 @@ export default function Home() {
             <Button 
               variant="outline" 
               className="border-primary text-primary hover:bg-primary/5 font-semibold transition-all duration-200"
-              onClick={() => setLocation('/admin/login')}
+              onClick={() => setLocation('/admin')}
             >
               <LogIn className="mr-2 h-4 w-4" />
               Admin Login
@@ -74,7 +79,7 @@ export default function Home() {
               <Button 
                 size="lg" 
                 className="bg-primary hover:bg-primary/90 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
-                onClick={() => setLocation('/admin/login')}
+                onClick={() => setLocation('/admin')}
               >
                 Access Admin Dashboard
                 <ArrowRight className="ml-2 h-5 w-5" />
