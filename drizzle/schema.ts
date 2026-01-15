@@ -133,3 +133,35 @@ export const instapayTransactions = mysqlTable("instapayTransactions", {
 
 export type InstapayTransaction = typeof instapayTransactions.$inferSelect;
 export type InsertInstapayTransaction = typeof instapayTransactions.$inferInsert;
+
+
+/**
+ * API Keys table - for external system authentication
+ * Each key has a name, permissions, and optional expiration
+ */
+export const apiKeys = mysqlTable("apiKeys", {
+  id: int("id").autoincrement().primaryKey(),
+  /** Unique API key (hashed) */
+  keyHash: varchar("keyHash", { length: 64 }).notNull().unique(),
+  /** Key prefix for identification (first 8 chars of original key) */
+  keyPrefix: varchar("keyPrefix", { length: 8 }).notNull(),
+  /** Human-readable name for the key */
+  name: varchar("name", { length: 100 }).notNull(),
+  /** Description of the key's purpose */
+  description: text("description"),
+  /** Permissions: read, write, admin */
+  permissions: mysqlEnum("permissions", ["read", "write", "admin"]).default("read").notNull(),
+  /** Whether the key is active */
+  isActive: int("isActive").notNull().default(1),
+  /** Last time the key was used */
+  lastUsedAt: timestamp("lastUsedAt"),
+  /** Expiration date (null = never expires) */
+  expiresAt: timestamp("expiresAt"),
+  /** Created by user ID */
+  createdBy: int("createdBy"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = typeof apiKeys.$inferInsert;

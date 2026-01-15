@@ -90,3 +90,15 @@
 - [x] Create workflow for pushing images to AWS ECR
 - [x] Create deployment workflow for EC2/ECS
 - [x] Document CI/CD setup and required GitHub secrets
+
+
+## External REST API Integration
+- [x] Design REST API endpoints for all modules
+- [x] Implement API key authentication for external systems
+- [x] Create REST routes for Customers (GET, POST, PUT, DELETE)
+- [x] Create REST routes for Accounts (GET, POST, PUT, DELETE)
+- [x] Create REST routes for Transactions (GET, POST)
+- [x] Create REST routes for Branches (GET, POST, PUT, DELETE)
+- [x] Create REST routes for Instapay transfers
+- [x] Generate OpenAPI/Swagger documentation
+- [x] Write API integration tests
